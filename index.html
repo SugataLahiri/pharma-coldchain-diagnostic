@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pharma Cold Chain Diagnostic (SCOR-DS)</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F1F6F8; --surface:#FFFFFF; --ink:#0E2233; --muted:#55707F; --line:#D3E1E8;
+  --accent:#12707A; --accent-ink:#FFFFFF; --band:rgba(18,112,122,.10); --track:#E3EDF1;
+  --good:#2C8A57; --warn:#B57A0C; --bad:#C2402E;
+  --good-bg:#DCF0E4; --warn-bg:#F7EACB; --bad-bg:#F6D9D3;
+  --head:"Bricolage Grotesque","Trebuchet MS",system-ui,sans-serif;
+  --body:"Public Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0A1822; --surface:#10283B; --ink:#E4EFF4; --muted:#8FA9B8; --line:#21405A;
+    --accent:#4FC3CB; --accent-ink:#06222A; --band:rgba(79,195,203,.13); --track:#183349;
+    --good:#5CC98C; --warn:#E3B04A; --bad:#F0806F;
+    --good-bg:rgba(92,201,140,.16); --warn-bg:rgba(227,176,74,.16); --bad-bg:rgba(240,128,111,.17);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0A1822; --surface:#10283B; --ink:#E4EFF4; --muted:#8FA9B8; --line:#21405A;
+  --accent:#4FC3CB; --accent-ink:#06222A; --band:rgba(79,195,203,.13); --track:#183349;
+  --good:#5CC98C; --warn:#E3B04A; --bad:#F0806F;
+  --good-bg:rgba(92,201,140,.16); --warn-bg:rgba(227,176,74,.16); --bad-bg:rgba(240,128,111,.17);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion: reduce){html{scroll-behavior:auto}*{transition:none!important;animation:none!important}}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.55}
+h1,h2,h3{font-family:var(--head);line-height:1.15;margin:0;letter-spacing:-.01em}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* hero with live logger trace */
+.hero{background:var(--surface);border-bottom:1px solid var(--line)}
+.hero-in{max-width:1120px;margin:0 auto;padding:28px 20px 20px}
+.hero h1{font-size:clamp(1.7rem,4vw,2.6rem);max-width:22ch}
+.hero p.sub{color:var(--muted);max-width:62ch;margin:10px 0 18px}
+.trace-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--bg)}
+.trace-wrap svg{display:block;min-width:600px;width:100%;height:auto}
+.trace-cap{display:flex;flex-wrap:wrap;gap:6px 18px;justify-content:space-between;color:var(--muted);font-size:.85rem;margin-top:8px}
+.theme-btn{position:absolute;right:16px;top:14px;background:none;border:1px solid var(--line);border-radius:999px;padding:4px 12px;font-size:.8rem;cursor:pointer;color:var(--muted)}
+.hero{position:relative}
+
+/* shell */
+.shell{max-width:1120px;margin:0 auto;padding:22px 20px 60px;display:grid;grid-template-columns:230px minmax(0,1fr);gap:28px}
+@media (max-width:860px){.shell{grid-template-columns:1fr;gap:16px}}
+
+.rail{list-style:none;margin:0;padding:0;position:sticky;top:16px;align-self:start}
+.rail li{position:relative}
+.rail button{display:flex;align-items:center;gap:12px;width:100%;background:none;border:0;text-align:left;padding:9px 6px;cursor:pointer;border-radius:8px}
+.rail button:hover{background:var(--track)}
+.rail .node{width:22px;height:22px;border-radius:50%;border:2px solid var(--line);background:var(--surface);flex:none;display:grid;place-items:center;font-size:.7rem;font-weight:600;z-index:1}
+.rail li:not(:last-child)::after{content:"";position:absolute;left:16px;top:34px;bottom:-8px;width:2px;background:var(--line)}
+.rail .name{flex:1;font-weight:500}
+.rail .meta{font-size:.78rem;color:var(--muted)}
+.rail li.active .name{font-weight:600;color:var(--accent)}
+.rail li.active .node{border-color:var(--accent)}
+.rail .node.good{background:var(--good);border-color:var(--good);color:#fff}
+.rail .node.warn{background:var(--warn);border-color:var(--warn);color:#fff}
+.rail .node.bad{background:var(--bad);border-color:var(--bad);color:#fff}
+@media (max-width:860px){
+  .rail{position:static;display:flex;gap:4px;overflow-x:auto;padding-bottom:6px}
+  .rail li{flex:none}.rail li::after{display:none}
+  .rail button{padding:6px 10px;border:1px solid var(--line);background:var(--surface)}
+  .rail .meta{display:none}
+}
+
+/* panels */
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:24px}
+.panel h2{font-size:1.6rem;margin-bottom:4px}
+.panel .lede{color:var(--muted);margin:0 0 20px;max-width:64ch}
+.progress{height:6px;background:var(--track);border-radius:3px;overflow:hidden;margin:0 0 22px}
+.progress span{display:block;height:100%;background:var(--accent);transition:width .25s}
+
+.field{margin-bottom:16px;max-width:460px}
+.field label{display:block;font-weight:600;margin-bottom:5px}
+.field input,.field select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
+
+.q{border:0;border-top:1px solid var(--line);margin:0;padding:18px 0}
+.q:first-of-type{border-top:0;padding-top:0}
+.q legend{font-weight:500;padding:0;margin-bottom:10px;max-width:70ch;float:left;width:100%}
+.q .scale,.q .mrow{clear:both}
+.tagline{font-size:.8rem;color:var(--muted);margin-top:8px}
+.scale{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;max-width:560px}
+.scale label{position:relative;cursor:pointer;text-align:center}
+.scale input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}
+.opt{display:block;border:1px solid var(--line);border-radius:8px;padding:8px 2px;background:var(--bg);transition:background .15s}
+.opt b{display:block;font-size:1.05rem}
+.opt i{display:block;font-style:normal;font-size:.68rem;opacity:.85;line-height:1.2}
+.scale label:hover .opt{border-color:var(--accent)}
+.scale input:checked + .opt{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.scale input:focus-visible + .opt{outline:2px solid var(--ink);outline-offset:2px}
+.mrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.mrow input{width:130px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
+.mrow .unit{color:var(--muted)}
+.mchip{font-size:.8rem;padding:2px 10px;border-radius:999px;background:var(--track);color:var(--muted)}
+.mhint{font-size:.8rem;color:var(--muted);width:100%}
+
+.nav{display:flex;justify-content:space-between;gap:10px;margin-top:22px;flex-wrap:wrap}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:10px 18px;cursor:pointer;font-weight:600}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.ghost{background:none;font-weight:500;color:var(--muted)}
+
+/* results */
+.summary{display:grid;grid-template-columns:auto 1fr;gap:22px;align-items:center;margin-bottom:8px}
+@media (max-width:560px){.summary{grid-template-columns:1fr}}
+.big{font-family:var(--head);font-size:4rem;font-weight:700;line-height:1}
+.big small{font-size:1.2rem;color:var(--muted);font-weight:500}
+.badge{display:inline-block;padding:3px 12px;border-radius:999px;font-weight:600;font-size:.85rem}
+.badge.good{background:var(--good-bg);color:var(--good)}
+.badge.warn{background:var(--warn-bg);color:var(--warn)}
+.badge.bad{background:var(--bad-bg);color:var(--bad)}
+.ctx{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.ctx span{background:var(--track);border-radius:999px;padding:2px 12px;font-size:.82rem;color:var(--muted)}
+.sect{margin-top:32px}
+.sect h3{font-size:1.25rem;margin-bottom:12px}
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px}
+@media (max-width:900px){.two{grid-template-columns:1fr}}
+.tbl-wrap{overflow-x:auto}
+table.heat{border-collapse:separate;border-spacing:3px;width:100%;min-width:420px;font-size:.85rem}
+.heat th{font-weight:500;color:var(--muted);text-align:center;padding:4px}
+.heat th:first-child,.heat td:first-child{text-align:left}
+.heat td{text-align:center;padding:9px 4px;border-radius:6px;font-weight:600}
+.heat td:first-child{font-weight:500;background:none;padding-left:0}
+.h-good{background:var(--good-bg);color:var(--good)}
+.h-warn{background:var(--warn-bg);color:var(--warn)}
+.h-bad{background:var(--bad-bg);color:var(--bad)}
+.h-none{background:var(--track);color:var(--muted);font-weight:400}
+.find{border-left:4px solid var(--bad);background:var(--bg);border-radius:0 8px 8px 0;padding:12px 16px;margin-bottom:10px}
+.find b{display:block;margin-bottom:2px}
+.find p{margin:0;color:var(--muted)}
+.weak{list-style:none;margin:0;padding:0}
+.weak li{display:flex;gap:12px;align-items:baseline;padding:9px 0;border-top:1px solid var(--line)}
+.weak li:first-child{border-top:0}
+.weak .sc{flex:none;width:34px;text-align:center;border-radius:6px;font-weight:600;padding:2px 0}
+.weak small{display:block;color:var(--muted)}
+.road{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+@media (max-width:900px){.road{grid-template-columns:1fr}}
+.col{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:14px}
+.col h4{margin:0 0 2px;font-family:var(--head);font-size:1.05rem}
+.col .when{color:var(--muted);font-size:.82rem;margin-bottom:10px}
+.col ul{margin:0;padding:0;list-style:none}
+.col li{padding:8px 0;border-top:1px solid var(--line);font-size:.92rem}
+.col li em{display:block;font-style:normal;color:var(--accent);font-weight:600;font-size:.8rem}
+.note{color:var(--muted);font-size:.85rem;margin-top:24px;max-width:70ch}
+.toast{color:var(--muted);font-size:.85rem;margin-left:8px}
+
+@media print{
+  .rail,.nav,.theme-btn,.hero,.noprint{display:none!important}
+  body{background:#fff;color:#000}
+  .shell{display:block;padding:0}.panel{border:0;padding:0}
+}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <button class="theme-btn noprint" id="themeBtn" type="button">Switch theme</button>
+  <div class="hero-in">
+    <h1>Where does your pharma cold chain lose its temperature?</h1>
+    <p class="sub">Rate 35 practices across the seven SCOR-DS processes. The trace below fills in as you answer, and any point that falls under the target zone is a weak link.</p>
+    <div class="trace-wrap" id="trace" role="img" aria-label="Score by SCOR-DS process"></div>
+    <div class="trace-cap"><span id="traceLegend"></span><span id="progressText"></span></div>
+  </div>
+</header>
+
+<div class="shell">
+  <ol class="rail" id="rail" aria-label="Diagnostic steps"></ol>
+  <main id="main"></main>
+</div>
+
+<script>
+"use strict";
+/* ---------- Config: edit here to change questions, weights and advice ---------- */
+var PROCS = [
+  {n:"Plan", b:"Forecasting and capacity planning for temperature-sensitive products."},
+  {n:"Order", b:"How cold chain requirements are captured and confirmed on customer orders."},
+  {n:"Source", b:"Qualifying suppliers and inbound lanes for cold products."},
+  {n:"Transform", b:"Cold storage, packaging and repacking operations."},
+  {n:"Fulfill", b:"Transport, handovers and last-mile delivery under temperature control."},
+  {n:"Return", b:"Excursion stock, returns and recalls."},
+  {n:"Orchestrate", b:"Compliance, data, risk and partner governance across the chain."}
+];
+var ATTR = {RL:"Reliability", RS:"Responsiveness", AG:"Agility", CO:"Cost", AM:"Asset efficiency"};
+var LEVELS = ["Not in place","Ad hoc","Defined","Measured","Optimised"];
+
+/* kind: s = maturity scale 1-5, m = metric converted to 1-5 through thresholds th (worst to best) */
+var Q = [
+ // Plan
+ {i:0,a:"RL",k:"s",t:"Demand and cold capacity plans are built per temperature class (2-8°C, frozen, ultra-cold), not for total volume."},
+ {i:0,a:"AG",k:"s",t:"Plans cover seasonal peaks and campaign launches, with cold capacity booked ahead."},
+ {i:0,a:"AM",k:"s",t:"Inventory planning uses remaining shelf life and expiry (first-expired-first-out), not only stock counts."},
+ {i:0,a:"RL",k:"m",t:"Forecast error (MAPE) on temperature-sensitive SKUs",u:"%",lower:1,th:[40,30,20,10]},
+ {i:0,a:"AG",k:"s",t:"A documented contingency plan covers cold room failure, reefer breakdown and customs delays."},
+ // Order
+ {i:1,a:"RS",k:"s",t:"Order entry captures temperature class, delivery window and whether the receiving site can accept cold goods."},
+ {i:1,a:"RL",k:"m",t:"On-time-in-full (OTIF) rate for cold orders",u:"%",lower:0,th:[80,90,95,98]},
+ {i:1,a:"RS",k:"s",t:"Customers can see order status and shipment temperature status without calling anyone."},
+ {i:1,a:"CO",k:"s",t:"Cost-to-serve for cold orders (packaging, refrigerants, express freight) is tracked and priced in."},
+ {i:1,a:"RL",k:"s",t:"Errors on cold orders (wrong item, quantity, address) are logged and root causes are closed."},
+ // Source
+ {i:2,a:"RL",k:"s",t:"Suppliers and inbound vendors are qualified for cold chain through audits and quality agreements."},
+ {i:2,a:"RL",k:"m",t:"Inbound shipments arriving within their labelled temperature range",u:"%",lower:0,th:[85,92,96,99]},
+ {i:2,a:"AG",k:"s",t:"Backup suppliers or lanes are qualified for critical cold items."},
+ {i:2,a:"RS",k:"s",t:"Inbound checks (logger download, visual check, quarantine release) finish within a defined time."},
+ {i:2,a:"CO",k:"s",t:"Carrier and 3PL selection uses total landed cost, including excursion losses, not just the freight rate."},
+ // Transform
+ {i:3,a:"RL",k:"s",t:"Cold rooms and freezers are temperature-mapped with sensors at worst-case spots, and re-mapped after changes."},
+ {i:3,a:"AG",k:"s",t:"Backup power and redundant refrigeration are in place and tested on a schedule."},
+ {i:3,a:"RL",k:"s",t:"Shippers (passive or active) are qualified for seasonal profiles and the longest expected transit time."},
+ {i:3,a:"AM",k:"s",t:"Cold storage utilisation and energy use are tracked and used in capacity decisions."},
+ {i:3,a:"CO",k:"m",t:"Cold products written off or spoiled, as a share of cold inventory value",u:"%",lower:1,th:[3,1.5,0.5,0.1]},
+ // Fulfill
+ {i:4,a:"RL",k:"m",t:"Shipments with a temperature excursion",u:"%",lower:1,th:[5,2,1,0.3]},
+ {i:4,a:"RL",k:"s",t:"Every handover point (dock, airport, customs, last mile) has a maximum dwell time and a named owner."},
+ {i:4,a:"RS",k:"s",t:"Shipments have live tracking with temperature alerts, and a named responder with a time-to-act target."},
+ {i:4,a:"AG",k:"s",t:"Lane risk is assessed by season, with alternative routes or modes ready."},
+ {i:4,a:"CO",k:"s",t:"Cost per pallet-km on cold lanes is benchmarked, including reefer utilisation."},
+ // Return
+ {i:5,a:"RL",k:"s",t:"Excursion-affected stock is quarantined and dispositioned by QA using data, not destroyed by default."},
+ {i:5,a:"RS",k:"s",t:"Recalls and returns are processed within a defined time."},
+ {i:5,a:"RL",k:"s",t:"Returned cold goods are accepted only with data logger proof of temperature integrity."},
+ {i:5,a:"CO",k:"s",t:"Reverse logistics cost and recovery value (returns, reusable shippers, refrigerants) are tracked."},
+ {i:5,a:"AM",k:"s",t:"Reusable packaging and cold pack disposal are managed as a programme."},
+ // Orchestrate
+ {i:6,a:"RL",k:"s",t:"GDP, WHO and local regulator audits are run on a schedule and corrective actions are closed."},
+ {i:6,a:"RS",k:"s",t:"Temperature data from all partners lands in one system with an audit trail."},
+ {i:6,a:"AG",k:"s",t:"A cold chain risk register (for example FMEA) is reviewed on a schedule."},
+ {i:6,a:"RL",k:"s",t:"Staff are trained and checked for competence on cold handling, and SOPs are current."},
+ {i:6,a:"CO",k:"s",t:"Cold chain KPIs are reviewed with 3PLs and carriers under SLAs with penalties or incentives."}
+];
+(function(){ var c={}; Q.forEach(function(q){ var L="POSTFRX"[q.i]; c[L]=(c[L]||0)+1; q.id=L+c[L]; }); })();
+
+var REC = [
+ {q:"Split demand and capacity plans by temperature class and review them monthly.",
+  m:"Adopt first-expired-first-out inventory rules and a weekly expiry-risk report.",
+  s:"Run a cold capacity S&OP with scenarios for campaigns, peaks and disruptions."},
+ {q:"Make temperature class, delivery window and receiving-site readiness mandatory at order entry.",
+  m:"Give customers shipment status and temperature alerts through a portal or messages.",
+  s:"Move to cost-to-serve pricing with cold chain service tiers."},
+ {q:"Send suppliers a cold chain questionnaire and start collecting logger data on inbound lanes.",
+  m:"Qualify backup suppliers or lanes for critical items and set a receipt-check time target.",
+  s:"Choose carriers on total landed cost, scoring excursion losses."},
+ {q:"Review temperature mapping records and move sensors to worst-case positions.",
+  m:"Test backup power and alarm escalation every quarter and re-qualify shippers for seasonal profiles.",
+  s:"Invest in redundant, energy-efficient cold rooms and utilisation analytics."},
+ {q:"Set a maximum dwell time and a named owner for every handover point.",
+  m:"Deploy real-time loggers with an alert-and-response SOP.",
+  s:"Redesign the network with regional cold hubs and alternative transport modes."},
+ {q:"Auto-quarantine excursion stock and write a QA disposition SOP based on stability data.",
+  m:"Require logger evidence for returns and set recall time targets.",
+  s:"Launch a reusable shipper and reverse cold flow programme."},
+ {q:"Close open audit actions and refresh SOP training records.",
+  m:"Build a common temperature data platform, a partner KPI dashboard and a risk register.",
+  s:"Govern partners through SLAs and add predictive excursion analytics."}
+];
+
+/* ---------- State ---------- */
+var KEY="pharma-coldchain-diag-v1";
+var ctx={name:"",org:"manufacturer",product:"vaccine",temp:"2-8"};
+var answers={}; var step=0;
+var SAMPLE={
+ P:[3,2,2,"28",3],O:[3,"93",3,2,3],S:[4,"90",2,3,2],T:[4,3,3,3,"1.8"],
+ F:["3.5",2,2,2,3],R:[2,3,2,2,2],X:[4,3,2,3,3]
+};
+function save(){try{localStorage.setItem(KEY,JSON.stringify({ctx:ctx,answers:answers,step:step}));}catch(e){}}
+function load(){try{var s=JSON.parse(localStorage.getItem(KEY)||"null");if(s){ctx=Object.assign(ctx,s.ctx||{});answers=s.answers||{};step=s.step||0;}}catch(e){}}
+
+/* ---------- Scoring ---------- */
+function metricScore(q,v){
+  if(v===undefined||v===""||isNaN(parseFloat(v)))return null; v=parseFloat(v); var t=q.th;
+  if(q.lower){ return v<=t[3]?5:v<=t[2]?4:v<=t[1]?3:v<=t[0]?2:1; }
+  return v>=t[3]?5:v>=t[2]?4:v>=t[1]?3:v>=t[0]?2:1;
+}
+function qScore(q){
+  var v=answers[q.id];
+  if(q.k==="s")return (v>=1&&v<=5)?Number(v):null;
+  return metricScore(q,v);
+}
+function avg(list){var a=list.filter(function(x){return x!==null;});return a.length?a.reduce(function(s,x){return s+x;},0)/a.length:null;}
+function pScore(i){return avg(Q.filter(function(q){return q.i===i;}).map(qScore));}
+function attrScore(i,a){return avg(Q.filter(function(q){return q.i===i&&q.a===a;}).map(qScore));}
+function qById(id){return Q.filter(function(q){return q.id===id;})[0];}
+function sc(id){return qScore(qById(id));}
+function answeredCount(){return Q.filter(function(q){return qScore(q)!==null;}).length;}
+function target(){
+  var t=3.5;
+  if(ctx.temp==="frozen"||ctx.temp==="mixed")t=3.7;
+  if(ctx.temp==="ultra")t=3.9;
+  if(ctx.product==="vaccine"||ctx.product==="biologic"||ctx.product==="clinical")t+=0.1;
+  return Math.round(t*10)/10;
+}
+function band(v,t){return v>=t?"good":v>=t-0.7?"warn":"bad";}
+function fmt(v){return v===null?"-":v.toFixed(1);}
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
+function lt(v,x){return v!==null&&v<x;}
+function le(v,x){return v!==null&&v<=x;}
+
+/* ---------- Charts (inline SVG) ---------- */
+function traceSVG(){
+  var W=760,H=200,pl=38,pr=18,pt=14,pb=32,t=target(),n=PROCS.length;
+  function X(i){return pl+i*(W-pl-pr)/(n-1);}
+  function Y(v){return pt+(5-v)/4*(H-pt-pb);}
+  var s='<svg viewBox="0 0 '+W+' '+H+'" xmlns="http://www.w3.org/2000/svg" font-family="Public Sans, system-ui, sans-serif" font-size="11">';
+  s+='<rect x="'+pl+'" y="'+Y(5)+'" width="'+(W-pl-pr)+'" height="'+(Y(t)-Y(5))+'" fill="var(--band)"/>';
+  for(var g=1;g<=5;g++){
+    s+='<line x1="'+pl+'" x2="'+(W-pr)+'" y1="'+Y(g)+'" y2="'+Y(g)+'" stroke="var(--line)" stroke-width="1"/>';
+    s+='<text x="'+(pl-8)+'" y="'+(Y(g)+4)+'" text-anchor="end" fill="var(--muted)">'+g+'</text>';
+  }
+  for(var i=0;i<n;i++){
+    s+='<line x1="'+X(i)+'" x2="'+X(i)+'" y1="'+pt+'" y2="'+(H-pb)+'" stroke="var(--line)" stroke-dasharray="2 4"/>';
+    s+='<text x="'+X(i)+'" y="'+(H-10)+'" text-anchor="middle" fill="var(--muted)">'+PROCS[i].n+'</text>';
+  }
+  s+='<text x="'+(W-pr-4)+'" y="'+(Y(5)+14)+'" text-anchor="end" fill="var(--accent)" font-weight="600">Target zone '+t.toFixed(1)+'+</text>';
+  var pts=[],sc_=[];
+  for(var j=0;j<n;j++){var v=pScore(j);sc_.push(v);if(v!==null)pts.push([X(j),Y(v)]);}
+  if(pts.length>1){s+='<polyline points="'+pts.map(function(p){return p[0]+','+p[1];}).join(" ")+'" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linejoin="round"/>';}
+  for(var k=0;k<n;k++){
+    if(sc_[k]===null)continue;
+    var low=sc_[k]<t,c=low?"var(--bad)":"var(--good)";
+    s+='<circle cx="'+X(k)+'" cy="'+Y(sc_[k])+'" r="6" fill="'+c+'" stroke="var(--surface)" stroke-width="2"/>';
+    s+='<text x="'+X(k)+'" y="'+(Y(sc_[k])-11)+'" text-anchor="middle" fill="'+c+'" font-weight="600">'+sc_[k].toFixed(1)+'</text>';
+  }
+  return s+'</svg>';
+}
+function radarSVG(){
+  var cx=180,cy=160,R=104,n=PROCS.length,t=target();
+  function P(v,i){var a=-Math.PI/2+i*2*Math.PI/n;return [cx+(v/5)*R*Math.cos(a),cy+(v/5)*R*Math.sin(a)];}
+  var s='<svg viewBox="0 0 360 320" xmlns="http://www.w3.org/2000/svg" font-family="Public Sans, system-ui, sans-serif" font-size="12" role="img" aria-label="Radar chart of process scores" style="width:100%;height:auto;max-width:420px;display:block;margin:0 auto">';
+  for(var r=1;r<=5;r++){
+    var ring=[];for(var i=0;i<n;i++){ring.push(P(r,i).join(","));}
+    s+='<polygon points="'+ring.join(" ")+'" fill="none" stroke="var(--line)"/>';
+  }
+  for(var a=0;a<n;a++){
+    var e=P(5,a),l=P(5.9,a);
+    s+='<line x1="'+cx+'" y1="'+cy+'" x2="'+e[0]+'" y2="'+e[1]+'" stroke="var(--line)"/>';
+    s+='<text x="'+l[0]+'" y="'+(l[1]+4)+'" text-anchor="'+(l[0]<cx-5?"end":l[0]>cx+5?"start":"middle")+'" fill="var(--ink)">'+PROCS[a].n+'</text>';
+  }
+  var tg=[],ac=[];
+  for(var b=0;b<n;b++){tg.push(P(t,b).join(","));var v=pScore(b);ac.push(P(v===null?0:v,b).join(","));}
+  s+='<polygon points="'+tg.join(" ")+'" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="5 4"/>';
+  s+='<polygon points="'+ac.join(" ")+'" fill="var(--bad)" fill-opacity=".16" stroke="var(--bad)" stroke-width="2"/>';
+  return s+'</svg><p style="text-align:center;color:var(--muted);font-size:.82rem;margin:6px 0 0">Solid: your scores. Dashed: target ('+t.toFixed(1)+').</p>';
+}
+
+/* ---------- Diagnosis rules ---------- */
+function findings(){
+  var t=target(),f=[];
+  var F=pScore(4),Pl=pScore(0),S=pScore(2),X=pScore(6);
+  if(le(sc("F1"),2)&&lt(F,t))f.push(["Excursions are showing up in Fulfill","A high excursion rate and a weak Fulfill score point to transit. Check reefer and lane monitoring, handover dwell times and who owns each handover."]);
+  if(le(sc("F1"),2)&&le(sc("T3"),2))f.push(["Packaging may be under-qualified","Excursions together with weak shipper qualification suggest packaging fails on real routes. Re-qualify shippers for seasonal profiles and the longest transit time."]);
+  if(le(sc("F1"),3)&&le(sc("F3"),2))f.push(["Excursions are detected too late","Without live tracking and a named responder, a warm shipment is only found on arrival. Add alerts with a response time target."]);
+  if(le(sc("T5"),2)&&le(sc("P3"),2))f.push(["Spoilage is partly a planning problem","Write-offs alongside weak expiry-aware planning mean stock ages before it ships. Introduce first-expired-first-out rules and expiry-risk reporting."]);
+  if(le(sc("S2"),2)&&lt(S,t))f.push(["Cold chain breaks before goods reach you","Poor inbound temperature compliance with weak sourcing scores points to supplier and carrier lanes. Audit vendors and share logger data with them."]);
+  if(le(sc("O2"),2)&&(lt(Pl,t)||le(sc("P1"),2)))f.push(["Missed deliveries trace back to planning","Low OTIF with weak cold capacity planning means orders are accepted that cold capacity cannot meet. Plan by temperature class and check capacity at order entry."]);
+  var weak=0;for(var i=0;i<PROCS.length;i++){var v=pScore(i);if(lt(v,3))weak++;}
+  if(lt(X,3)&&weak>=2)f.push(["Weak governance is amplifying the gaps","Orchestrate scores under 3 while other processes are also weak. Fix data visibility, SOP ownership and partner SLAs first so other fixes stick."]);
+  return f;
+}
+function weakest(){
+  return Q.map(function(q){return {q:q,s:qScore(q)};}).filter(function(x){return x.s!==null&&x.s<=2;})
+    .sort(function(a,b){return a.s-b.s;}).slice(0,6);
+}
+function roadmap(){
+  var t=target(),list=[];
+  PROCS.forEach(function(p,i){var v=pScore(i);if(v!==null&&v<t)list.push({i:i,v:v});});
+  list.sort(function(a,b){return a.v-b.v;});
+  return list;
+}
+function rating(o,t){return o>=t?"On target":o>=t-0.7?"Developing":o>=2?"At risk":"Critical";}
+
+/* ---------- Rendering ---------- */
+var railEl=document.getElementById("rail"),mainEl=document.getElementById("main");
+var TOTAL_STEPS=9;
+var ORG={manufacturer:"Manufacturer",distributor:"Distributor / wholesaler","3pl":"3PL / cold chain logistics",hospital:"Hospital or pharmacy chain",other:"Other"};
+var PROD={vaccine:"Vaccines",biologic:"Biologics and specialty",insulin:"Insulin and peptides",clinical:"Clinical trial supplies",generic:"Other chilled medicines"};
+var TEMP={"2-8":"Refrigerated 2-8°C",frozen:"Frozen (-20°C)",ultra:"Ultra-cold (-70°C)",mixed:"Mixed ranges"};
+
+function renderRail(){
+  var t=target(),h="";
+  var items=[{name:"Context",meta:""}].concat(PROCS.map(function(p,i){
+    var c=Q.filter(function(q){return q.i===i&&qScore(q)!==null;}).length;
+    return {name:p.n,meta:c+" of 5",score:pScore(i)};
+  })).concat([{name:"Results",meta:answeredCount()+" answers"}]);
+  items.forEach(function(it,idx){
+    var cls=idx===step?"active":"";
+    var nodeCls="node",label=idx===0?"i":idx===8?"✓":String(idx);
+    if(it.score!==null&&it.score!==undefined){nodeCls+=" "+band(it.score,t);label=it.score.toFixed(1);}
+    h+='<li class="'+cls+'"><button type="button" data-step="'+idx+'"'+(idx===step?' aria-current="step"':'')+'><span class="'+nodeCls+'">'+(idx>0&&idx<8?(it.score!=null?"":label):label)+'</span><span><span class="name">'+it.name+'</span>'+(it.meta?'<br><span class="meta">'+it.meta+(it.score!=null?" · "+it.score.toFixed(1):"")+'</span>':'')+'</span></button></li>';
+  });
+  railEl.innerHTML=h;
+}
+function renderTrace(){
+  document.getElementById("trace").innerHTML=traceSVG();
+  document.getElementById("traceLegend").textContent="Score by SCOR-DS process (1 to 5). Shaded zone is the target for your product.";
+  document.getElementById("progressText").textContent=answeredCount()+" of "+Q.length+" answered";
+}
+function updateLive(){renderRail();renderTrace();}
+
+function optionList(map,cur){return Object.keys(map).map(function(k){return '<option value="'+k+'"'+(k===cur?" selected":"")+'>'+map[k]+'</option>';}).join("");}
+
+function viewContext(){
+  return '<section class="panel"><h2>Set the context</h2><p class="lede">Your answers set the target score. Ultra-cold and biologic products need a higher bar than chilled generics.</p>'+
+  '<div class="field"><label for="c-name">Organisation or project name (optional)</label><input id="c-name" data-ctx="name" type="text" value="'+esc(ctx.name)+'" placeholder="For the report title"></div>'+
+  '<div class="field"><label for="c-org">Your role in the chain</label><select id="c-org" data-ctx="org">'+optionList(ORG,ctx.org)+'</select></div>'+
+  '<div class="field"><label for="c-prod">Main product type</label><select id="c-prod" data-ctx="product">'+optionList(PROD,ctx.product)+'</select></div>'+
+  '<div class="field"><label for="c-temp">Temperature range</label><select id="c-temp" data-ctx="temp">'+optionList(TEMP,ctx.temp)+'</select></div>'+
+  '<p class="lede" id="tgtText">Target score for this setup: <b>'+target().toFixed(1)+'</b> out of 5.</p>'+
+  '<div class="nav"><button class="btn ghost" type="button" data-act="sample">Fill sample answers</button><button class="btn primary" type="button" data-act="next">Start with Plan</button></div></section>';
+}
+function questionHTML(q){
+  var h='<fieldset class="q" data-qid="'+q.id+'">';
+  if(q.k==="s"){
+    h+='<legend>'+q.t+'</legend><div class="scale">';
+    for(var n=1;n<=5;n++){h+='<label><input type="radio" name="'+q.id+'" value="'+n+'"'+(Number(answers[q.id])===n?" checked":"")+'><span class="opt"><b>'+n+'</b><i>'+LEVELS[n-1]+'</i></span></label>';}
+    h+='</div>';
+  }else{
+    var t=q.th,best=q.lower?"5 = "+t[3]+q.u+" or less":"5 = "+t[3]+q.u+" or more";
+    var s=metricScore(q,answers[q.id]);
+    h+='<legend>'+q.t+'</legend><div class="mrow"><input type="number" step="any" min="0" inputmode="decimal" id="in-'+q.id+'" data-metric="'+q.id+'" value="'+(answers[q.id]===undefined?"":esc(answers[q.id]))+'" aria-label="'+esc(q.t)+'"><span class="unit">'+q.u+'</span><span class="mchip" id="chip-'+q.id+'">'+(s===null?"Enter a value":"Scores "+s+" of 5")+'</span><span class="mhint">'+(q.lower?"Lower is better. ":"Higher is better. ")+best+'.</span></div>';
+  }
+  return h+'<div class="tagline">Measures '+ATTR[q.a].toLowerCase()+'</div></fieldset>';
+}
+function viewProcess(i){
+  var p=PROCS[i],qs=Q.filter(function(q){return q.i===i;});
+  var done=qs.filter(function(q){return qScore(q)!==null;}).length;
+  var h='<section class="panel"><h2>'+p.n+'</h2><p class="lede">'+p.b+' Rate how well each statement holds today: 1 means not in place, 5 means measured and continuously improved.</p>';
+  h+='<div class="progress" aria-hidden="true"><span id="pbar" style="width:'+(done/qs.length*100)+'%"></span></div>';
+  qs.forEach(function(q){h+=questionHTML(q);});
+  h+='<div class="nav"><button class="btn" type="button" data-act="back">Back</button><button class="btn primary" type="button" data-act="next">'+(i===6?"See results":"Next: "+PROCS[i+1].n)+'</button></div></section>';
+  return h;
+}
+function heatCell(v,t){return v===null?'<td class="h-none">-</td>':'<td class="h-'+band(v,t)+'">'+v.toFixed(1)+'</td>';}
+function viewResults(){
+  var t=target(),scores=PROCS.map(function(p,i){return pScore(i);}),o=avg(scores);
+  if(o===null){return '<section class="panel"><h2>No results yet</h2><p class="lede">Answer at least one question to see your diagnostic. You can also load sample answers to explore the report.</p><div class="nav"><button class="btn" type="button" data-act="back">Back</button><button class="btn primary" type="button" data-act="sample">Fill sample answers</button></div></section>';}
+  var b=band(o,t);
+  var h='<section class="panel" id="report"><div class="summary"><div class="big">'+o.toFixed(1)+'<small> / 5</small></div><div><h2>'+(ctx.name?esc(ctx.name)+": ":"")+'Cold chain health check</h2><span class="badge '+b+'">'+rating(o,t)+'</span> <span class="lede" style="display:inline"> Target for this setup is '+t.toFixed(1)+'. Based on '+answeredCount()+' of '+Q.length+' answers.</span><div class="ctx"><span>'+ORG[ctx.org]+'</span><span>'+PROD[ctx.product]+'</span><span>'+TEMP[ctx.temp]+'</span></div></div></div>';
+
+  h+='<div class="sect two"><div><h3>Process profile</h3>'+radarSVG()+'</div><div><h3>Process by performance attribute</h3><div class="tbl-wrap"><table class="heat"><thead><tr><th></th>';
+  Object.keys(ATTR).forEach(function(a){h+='<th>'+ATTR[a]+'</th>';});
+  h+='<th>Overall</th></tr></thead><tbody>';
+  PROCS.forEach(function(p,i){h+='<tr><td>'+p.n+'</td>';Object.keys(ATTR).forEach(function(a){h+=heatCell(attrScore(i,a),t);});h+=heatCell(scores[i],t)+'</tr>';});
+  h+='</tbody></table></div><p class="note" style="margin-top:8px">Green meets the target, amber is within 0.7 of it, red is further below.</p></div></div>';
+
+  var fs=findings();
+  h+='<div class="sect"><h3>Likely root causes</h3>';
+  if(fs.length){fs.forEach(function(x){h+='<div class="find"><b>'+x[0]+'</b><p>'+x[1]+'</p></div>';});}
+  else{h+='<p class="lede">No combined risk patterns detected from the answers given. Review the weakest practices below.</p>';}
+  h+='</div>';
+
+  var wk=weakest();
+  h+='<div class="sect"><h3>Weakest practices</h3>';
+  if(wk.length){h+='<ul class="weak">';wk.forEach(function(x){h+='<li><span class="sc h-'+band(x.s,t)+'">'+x.s+'</span><span>'+x.q.t+'<small>'+PROCS[x.q.i].n+' · '+ATTR[x.q.a]+'</small></span></li>';});h+='</ul>';}
+  else{h+='<p class="lede">Nothing scored 2 or below.</p>';}
+  h+='</div>';
+
+  var rm=roadmap();
+  h+='<div class="sect"><h3>Action roadmap</h3>';
+  if(rm.length){
+    var cols=[["q","Quick wins","0 to 3 months"],["m","Medium term","3 to 12 months"],["s","Strategic","12 months and beyond"]];
+    h+='<div class="road">';
+    cols.forEach(function(c){h+='<div class="col"><h4>'+c[1]+'</h4><div class="when">'+c[2]+'</div><ul>';rm.slice(0,5).forEach(function(r){h+='<li><em>'+PROCS[r.i].n+' ('+r.v.toFixed(1)+')</em>'+REC[r.i][c[0]]+'</li>';});h+='</ul></div>';});
+    h+='</div>';
+  }else{h+='<p class="lede">Every scored process meets the target. Focus on keeping the metrics measured and reviewed.</p>';}
+  h+='</div>';
+
+  h+='<p class="note">Scoring rules, thresholds and advice are illustrative defaults. Align them to the metrics and best practices in your own SCOR-DS reference before using results in a real assessment.</p>';
+  h+='<div class="nav noprint"><button class="btn" type="button" data-act="back">Back to Orchestrate</button><span><button class="btn" type="button" data-act="print">Print or save as PDF</button> <button class="btn" type="button" data-act="copy">Copy summary</button> <button class="btn ghost" type="button" data-act="reset">Start over</button><span class="toast" id="toast"></span></span></div></section>';
+  return h;
+}
+function render(){
+  if(step===0)mainEl.innerHTML=viewContext();
+  else if(step>=1&&step<=7)mainEl.innerHTML=viewProcess(step-1);
+  else mainEl.innerHTML=viewResults();
+  updateLive();save();
+}
+function go(s){
+  step=Math.max(0,Math.min(8,s));render();
+  var reduce=window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  try{mainEl.scrollIntoView({behavior:reduce?"auto":"smooth",block:"start"});}catch(e){}
+}
+function summaryText(){
+  var t=target(),o=avg(PROCS.map(function(p,i){return pScore(i);}));
+  var L=[(ctx.name?ctx.name+" - ":"")+"Cold chain health check (SCOR-DS)",
+   "Overall: "+fmt(o)+" / 5 (target "+t.toFixed(1)+", "+(o===null?"n/a":rating(o,t))+")",
+   "Setup: "+ORG[ctx.org]+", "+PROD[ctx.product]+", "+TEMP[ctx.temp],""];
+  PROCS.forEach(function(p,i){L.push(p.n+": "+fmt(pScore(i)));});
+  var fs=findings();if(fs.length){L.push("","Likely root causes:");fs.forEach(function(x){L.push("- "+x[0]);});}
+  return L.join("\n");
+}
+
+/* ---------- Events ---------- */
+document.addEventListener("click",function(e){
+  var st=e.target.closest("[data-step]");if(st){go(Number(st.getAttribute("data-step")));return;}
+  var b=e.target.closest("[data-act]");if(!b)return;
+  var a=b.getAttribute("data-act");
+  if(a==="next")go(step+1);
+  else if(a==="back")go(step-1);
+  else if(a==="sample"){
+    "POSTFRX".split("").forEach(function(L){SAMPLE[L].forEach(function(v,n){answers[L+(n+1)]=(typeof v==="number")?v:String(v);});});
+    go(8);
+  }
+  else if(a==="reset"){answers={};ctx={name:"",org:"manufacturer",product:"vaccine",temp:"2-8"};go(0);}
+  else if(a==="print"){try{window.print();}catch(err){}}
+  else if(a==="copy"){
+    var ok=false,tx=summaryText(),toast=document.getElementById("toast");
+    try{navigator.clipboard.writeText(tx).then(function(){if(toast)toast.textContent="Copied";},function(){if(toast)toast.textContent="Copy is blocked here. Use Print instead.";});ok=true;}catch(err){}
+    if(!ok&&toast)toast.textContent="Copy is blocked here. Use Print instead.";
+  }
+});
+mainEl.addEventListener("change",function(e){
+  var t=e.target;
+  if(t.type==="radio"){answers[t.name]=Number(t.value);afterAnswer();}
+  else if(t.hasAttribute&&t.hasAttribute("data-ctx")){ctx[t.getAttribute("data-ctx")]=t.value;var tt=document.getElementById("tgtText");if(tt)tt.innerHTML='Target score for this setup: <b>'+target().toFixed(1)+'</b> out of 5.';updateLive();save();}
+});
+mainEl.addEventListener("input",function(e){
+  var t=e.target;
+  if(t.hasAttribute("data-metric")){
+    var id=t.getAttribute("data-metric");answers[id]=t.value;
+    var s=metricScore(qById(id),t.value),chip=document.getElementById("chip-"+id);
+    if(chip)chip.textContent=s===null?"Enter a value":"Scores "+s+" of 5";
+    afterAnswer();
+  }else if(t.getAttribute("data-ctx")==="name"){ctx.name=t.value;save();}
+});
+function afterAnswer(){
+  var i=step-1;
+  if(i>=0&&i<=6){var qs=Q.filter(function(q){return q.i===i;});var d=qs.filter(function(q){return qScore(q)!==null;}).length;var bar=document.getElementById("pbar");if(bar)bar.style.width=(d/qs.length*100)+"%";}
+  updateLive();save();
+}
+document.getElementById("themeBtn").addEventListener("click",function(){
+  var r=document.documentElement,cur=r.getAttribute("data-theme");
+  var dark=cur?cur==="dark":(window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches);
+  r.setAttribute("data-theme",dark?"light":"dark");
+});
+
+load();render();
+</script>
+</body>
+</html>
