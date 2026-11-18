@@ -189,6 +189,20 @@ details.dir{margin-top:14px;border:1px solid var(--line);border-radius:10px;padd
 .col li em{display:block;font-style:normal;color:var(--accent);font-weight:600;font-size:.8rem}
 .toast{color:var(--muted);font-size:.85rem;margin-left:8px}
 textarea.io{min-height:9rem;font-size:.82rem;margin-top:10px;font-family:ui-monospace,Menlo,Consolas,monospace}
+.hero-links{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 16px}
+.err{display:block;width:100%;color:var(--bad);font-size:.82rem;font-weight:600}
+.err:empty{display:none}
+input[aria-invalid="true"]{border-color:var(--bad)!important}
+.doc h3{font-size:1.2rem;margin:26px 0 8px}
+.doc p,.doc li{max-width:72ch}
+.doc ul,.doc ol{padding-left:22px;margin:0 0 12px}
+.doc li{margin-bottom:6px}
+@media print{
+  .hero,.rail,.nav,.tabs,.btn,.toast,#copyHost,.sample-note{display:none!important}
+  body{background:#fff;color:#000}
+  .shell{display:block;padding:0}
+  .panel{border:0;padding:0}
+}
 </style>
 
 </head>
@@ -197,6 +211,7 @@ textarea.io{min-height:9rem;font-size:.82rem;margin-top:10px;font-family:ui-mono
   <div class="hero-in">
     <h1>Where is your pharma supply chain losing ground?</h1>
     <p class="sub">Assess a site or business against the seven SCOR-DS processes. The report shows compliance red flags, the value exposed by each gap, the providers that can close it, and how you compare over time.</p>
+    <div class="hero-links"><button class="btn sm" type="button" data-page="about">About this app</button><button class="btn sm" type="button" data-page="help">How to use it</button></div>
     <div class="trace-wrap" id="trace" role="img" aria-label="Score by SCOR-DS process"></div>
     <div class="trace-cap"><span>Weighted score by SCOR-DS process, 1 to 5. The shaded zone is your target.</span><span id="progressText"></span></div>
   </div>
@@ -207,6 +222,7 @@ textarea.io{min-height:9rem;font-size:.82rem;margin-top:10px;font-family:ui-mono
   <main id="main"></main>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
 "use strict";
 /* ================= Config: edit questions, thresholds, advice, rules and providers here ================= */
@@ -301,7 +317,7 @@ var RAW=[
 ];
 var byL={};
 var Q=(function(){var c={};return RAW.map(function(r){var L="POSTFRX"[r[0]];c[L]=(c[L]||0)+1;var o=r[6]||{};
-  var q={id:L+c[L],i:r[0],a:r[1],k:r[2],l:r[3],t:r[4],c:r[5],u:o.u,lower:o.lower,th:o.th,cold:!!o.cold,mfg:!!o.mfg,crit:!!o.crit,s:o.s};
+  var q={id:L+c[L],i:r[0],a:r[1],k:r[2],l:r[3],t:r[4],c:r[5],u:o.u,lower:o.lower,th:o.th,max:o.u==="%"?100:365,cold:!!o.cold,mfg:!!o.mfg,crit:!!o.crit,s:o.s};
   byL[q.l]=q;return q;});})();
 
 var REC=[
@@ -403,7 +419,7 @@ var ORG={manufacturer:"Manufacturer",cdmo:"Contract manufacturer",distributor:"D
 var MK={india:"India",us:"United States",eu:"European Union",row:"Other markets"};
 var COLD={none:"No cold chain products",some:"Some cold chain products",most:"Mostly cold chain products"};
 var TABS=[["overview","Overview"],["priorities","Priorities and value"],["providers","Providers"],["compliance","Compliance"],["compare","Save and compare"]];
-var ctx,answers,notes,evals,snaps=[],step,tab,isSample,evalCat=null;
+var ctx,answers,notes,evals,snaps=[],step,tab,isSample,evalCat=null,page=null;
 function defCtx(){return {name:"",org:"manufacturer",mk:{india:true,us:false,eu:false,row:false},cold:"some",rev:"",coldShare:"",w:[2,2,2,2,2,2,2]};}
 function blank(){ctx=defCtx();answers={};notes={};evals={};step=0;tab="overview";isSample=false;evalCat=null;}
 function loadSample(){
@@ -427,8 +443,27 @@ function load(){
 function isMfg(){return ctx.org==="manufacturer"||ctx.org==="cdmo";}
 function active(q){return (!q.cold||ctx.cold!=="none")&&(!q.mfg||isMfg());}
 function isNA(q){return answers[q.id]==="na";}
+/* Validation: a KPI must be a number from 0 to its maximum (100 for percentages, 365 for days) */
+function metricError(q,v){
+  var s=String(v===undefined||v===null?"":v).trim();if(s===""||s==="na")return "";
+  var n=Number(s);
+  if(!isFinite(n))return "Enter a number, for example "+(q.u==="%"?"91":"3")+".";
+  if(n<0||n>q.max)return q.u==="%"?"Enter a percentage from 0 to 100.":"Enter a number of days from 0 to 365.";
+  return "";
+}
+function chipText(s,er){return er?"Not scored":s===null?"Enter a value":"Scores "+s+" of 5";}
+function ctxErr(k){
+  var s=String(ctx[k]===undefined||ctx[k]===null?"":ctx[k]).trim();if(s==="")return "";
+  var n=Number(s);
+  if(!isFinite(n))return "Enter a number.";
+  if(n<0)return "Enter a value of 0 or more.";
+  if(k==="coldShare"&&n>100)return "Enter a percentage from 0 to 100.";
+  return "";
+}
+function ctxNum(k){var s=String(ctx[k]===undefined||ctx[k]===null?"":ctx[k]).trim();if(s===""||ctxErr(k))return null;return Number(s);}
 function metricScore(q,v){
-  if(v===undefined||v===""||isNaN(parseFloat(v)))return null;v=parseFloat(v);var t=q.th;
+  var s=String(v===undefined||v===null?"":v).trim();
+  if(s===""||metricError(q,s))return null;v=Number(s);var t=q.th;
   if(q.lower)return v<=t[3]?5:v<=t[2]?4:v<=t[1]?3:v<=t[0]?2:1;
   return v>=t[3]?5:v>=t[2]?4:v>=t[1]?3:v>=t[0]?2:1;
 }
@@ -506,10 +541,10 @@ function roadmap(){
   allP().forEach(function(v,i){if(v!==null&&v<t)list.push({i:i,v:v});});
   return list.sort(function(a,b){return (a.v-b.v)-(ctx.w[a.i]-ctx.w[b.i])*0.01;});
 }
-function rawNum(label){var q=byL[label];if(!q||!active(q)||isNA(q))return null;var v=parseFloat(answers[q.id]);return isNaN(v)?null:v;}
+function rawNum(label){var q=byL[label];if(!q||!active(q)||isNA(q))return null;if(metricScore(q,answers[q.id])===null)return null;return Number(String(answers[q.id]).trim());}
 function stake(){
-  var rev=parseFloat(ctx.rev);if(isNaN(rev)||rev<=0)return null;
-  var rows=[],v,cs=parseFloat(ctx.coldShare);
+  var rev=ctxNum("rev");if(rev===null||rev<=0)return null;
+  var rows=[],v,cs=ctxNum("coldShare");
   v=rawNum("Expiry write-offs");if(v!==null)rows.push(["Returns and expiry write-offs",v+"%","0.5%",Math.max(0,v-0.5)/100*rev,"Sales value written off above the benchmark"]);
   v=rawNum("On-time-in-full");if(v!==null)rows.push(["Late or short deliveries",v+"%","98%",Math.max(0,98-v)/100*rev,"Order value delivered late or short"]);
   v=rawNum("Right first time");if(v!==null)rows.push(["Batches not right first time",v+"%","98%",Math.max(0,98-v)/100*rev,"Output value delayed by rework or rejection"]);
@@ -590,7 +625,7 @@ function renderRail(){
   items.forEach(function(it,idx){
     var nodeCls="node",label=idx===0?"i":idx===8?"✓":String(idx);
     if(it.score!==null&&it.score!==undefined){nodeCls+=" "+band(it.score,t);label=it.score.toFixed(1);}
-    h+='<li class="'+(idx===step?"active":"")+'"><button type="button" data-step="'+idx+'"'+(idx===step?' aria-current="step"':'')+'><span class="'+nodeCls+'">'+label+'</span><span><span class="name">'+it.name+'</span>'+(it.meta?'<br><span class="meta">'+it.meta+'</span>':'')+'</span></button></li>';
+    h+='<li class="'+(!page&&idx===step?"active":"")+'"><button type="button" data-step="'+idx+'"'+(!page&&idx===step?' aria-current="step"':'')+'><span class="'+nodeCls+'">'+label+'</span><span><span class="name">'+it.name+'</span>'+(it.meta?'<br><span class="meta">'+it.meta+'</span>':'')+'</span></button></li>';
   });
   railEl.innerHTML=h;
 }
@@ -609,8 +644,8 @@ function viewContext(){
   h+='<div class="field"><label for="c-org">Role in the chain</label><select id="c-org" data-ctx="org">'+optionList(ORG,ctx.org)+'</select><small>Manufacturing questions are hidden for other roles.</small></div>';
   h+='<div class="field"><span class="lab">Markets served</span><div class="checks">'+Object.keys(MK).map(function(k){return '<label><input type="checkbox" id="mk-'+k+'" data-mk="'+k+'"'+(ctx.mk[k]?" checked":"")+'> '+MK[k]+'</label>';}).join("")+'</div><small>US or EU sales raise the target.</small></div>';
   h+='<div class="field"><label for="c-cold">Temperature-sensitive products</label><select id="c-cold" data-ctx="cold">'+optionList(COLD,ctx.cold)+'</select></div>';
-  h+='<div class="field"><label for="c-rev">Annual revenue, ₹ crore (optional)</label><input id="c-rev" data-ctx="rev" type="number" min="0" step="any" inputmode="decimal" value="'+esc(ctx.rev)+'"><small>Used only to size the value exposed by each gap.</small></div>';
-  if(ctx.cold!=="none")h+='<div class="field"><label for="c-cs">Cold chain share of revenue, % (optional)</label><input id="c-cs" data-ctx="coldShare" type="number" min="0" max="100" step="any" inputmode="decimal" value="'+esc(ctx.coldShare)+'"></div>';
+  h+='<div class="field"><label for="c-rev">Annual revenue, ₹ crore (optional)</label><input id="c-rev" data-ctx="rev" type="number" min="0" step="any" inputmode="decimal" value="'+esc(ctx.rev)+'"'+(ctxErr("rev")?' aria-invalid="true"':'')+' aria-describedby="err-rev"><span class="err" id="err-rev" role="alert">'+ctxErr("rev")+'</span><small>Used only to size the value exposed by each gap.</small></div>';
+  if(ctx.cold!=="none")h+='<div class="field"><label for="c-cs">Cold chain share of revenue, % (optional)</label><input id="c-cs" data-ctx="coldShare" type="number" min="0" max="100" step="any" inputmode="decimal" value="'+esc(ctx.coldShare)+'"'+(ctxErr("coldShare")?' aria-invalid="true"':'')+' aria-describedby="err-coldShare"><span class="err" id="err-coldShare" role="alert">'+ctxErr("coldShare")+'</span><small>A percentage from 0 to 100.</small></div>';
   h+='</div><details class="adv"><summary>Process importance</summary><p style="color:var(--muted);font-size:.88rem;margin:8px 0 0">Raise the weight of the processes that matter most to this business. Weights change the overall score and the order of priorities.</p><div class="wgrid">';
   PROCS.forEach(function(p,i){h+='<label for="w-'+i+'">'+p.n+'<select id="w-'+i+'" data-w="'+i+'"><option value="1"'+(ctx.w[i]===1?" selected":"")+'>Low</option><option value="2"'+(ctx.w[i]===2?" selected":"")+'>Normal</option><option value="3"'+(ctx.w[i]===3?" selected":"")+'>High</option></select></label>';});
   h+='</div></details><p class="lede" id="tgtText">'+targetLine()+'</p>';
@@ -624,8 +659,8 @@ function questionHTML(q){
     for(var n=1;n<=5;n++)h+='<label><input type="radio" id="'+q.id+'-'+n+'" name="'+q.id+'" value="'+n+'"'+(Number(answers[q.id])===n?" checked":"")+(na?" disabled":"")+'><span class="opt"><b>'+n+'</b><i>'+LEVELS[n-1]+'</i></span></label>';
     h+='</div>';
   }else{
-    var s=metricScore(q,answers[q.id]);
-    h+='<legend>'+esc(q.t)+'</legend><div class="mrow"><input type="number" step="any" min="0" inputmode="decimal" id="in-'+q.id+'" data-metric="'+q.id+'" value="'+(na||answers[q.id]===undefined?"":esc(answers[q.id]))+'"'+(na?" disabled":"")+' aria-label="'+esc(q.t)+'"><span class="unit">'+q.u+'</span><span class="mchip" id="chip-'+q.id+'">'+(s===null?"Enter a value":"Scores "+s+" of 5")+'</span><span class="mhint">'+(q.lower?"Lower is better. 5 = "+uv(q.th[3],q.u)+" or less.":"Higher is better. 5 = "+uv(q.th[3],q.u)+" or more.")+'</span></div>';
+    var s=metricScore(q,answers[q.id]),er=na?"":metricError(q,answers[q.id]);
+    h+='<legend>'+esc(q.t)+'</legend><div class="mrow"><input type="number" step="any" min="0" max="'+q.max+'" inputmode="decimal" id="in-'+q.id+'" data-metric="'+q.id+'" value="'+(na||answers[q.id]===undefined?"":esc(answers[q.id]))+'"'+(na?" disabled":"")+(er?' aria-invalid="true"':'')+' aria-describedby="err-'+q.id+'" aria-label="'+esc(q.t)+'"><span class="unit">'+q.u+'</span><span class="mchip" id="chip-'+q.id+'">'+chipText(s,er)+'</span><span class="err" id="err-'+q.id+'" role="alert">'+er+'</span><span class="mhint">'+(q.u==="%"?"Enter a percentage from 0 to 100, for example 91. ":"Enter days from 0 to 365. ")+(q.lower?"Lower is better. 5 = "+uv(q.th[3],q.u)+" or less.":"Higher is better. 5 = "+uv(q.th[3],q.u)+" or more.")+'</span></div>';
   }
   h+='<div class="foot">'+(q.crit?'<span class="tag crit">Compliance-critical</span>':'')+(q.cold?'<span class="tag cold">Cold chain</span>':'')+'<span>'+ATTR[q.a]+'</span>';
   h+='<input class="note" type="text" id="note-'+q.id+'" data-note="'+q.id+'" value="'+esc(notes[q.id]||"")+'" placeholder="Evidence or note (optional)" aria-label="Evidence or note for: '+esc(q.l)+'">';
@@ -748,17 +783,17 @@ function viewResults(){
   h+='<div class="tabs" role="tablist">'+TABS.map(function(x){return '<button type="button" role="tab" id="tab-'+x[0]+'" data-tab="'+x[0]+'" aria-selected="'+(tab===x[0])+'">'+x[1]+'</button>';}).join("")+'</div>';
   h+=tab==="priorities"?tabPriorities(t):tab==="providers"?tabProviders(t):tab==="compliance"?tabCompliance(t):tab==="compare"?tabCompare(t):tabOverview(t);
   h+='<p class="caution">Questions, weights, thresholds and advice are defaults written for this tool. Have your quality and supply chain leads review them against your SCOR-DS reference and internal standards before relying on the results.</p>';
-  h+='<div class="nav"><button class="btn" type="button" data-act="back">Back to Orchestrate</button><span><button class="btn" type="button" data-act="copy">Copy summary</button> <button class="btn ghost" type="button" data-act="clear">Start over</button><span class="toast" id="toast" role="status"></span></span></div><div id="copyHost"></div></section>';
+  h+='<div class="nav"><button class="btn" type="button" data-act="back">Back to Orchestrate</button><span><button class="btn primary" type="button" data-act="pdf">Download PDF</button> <button class="btn" type="button" data-act="csv">Download CSV</button> <button class="btn" type="button" data-act="copy">Copy summary</button> <button class="btn ghost" type="button" data-act="clear">Start over</button></span></div><p class="toast" id="toast" role="status" style="margin:10px 0 0"></p><div id="copyHost"></div></section>';
   return h;
 }
 function render(){
   var a=document.activeElement,fid=a&&a.id?a.id:null;
-  mainEl.innerHTML=step===0?viewContext():step<=7?viewProcess(step-1):viewResults();
+  mainEl.innerHTML=page==="about"?viewAbout():page==="help"?viewHelp():step===0?viewContext():step<=7?viewProcess(step-1):viewResults();
   if(fid){var el=document.getElementById(fid);if(el&&el.focus){try{el.focus({preventScroll:true});}catch(e){}}}
   updateLive();save();
 }
 function go(s,scroll){
-  step=Math.max(0,Math.min(8,s));render();
+  page=null;step=Math.max(0,Math.min(8,s));render();
   if(scroll===false)return;
   var reduce=window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   try{mainEl.scrollIntoView({behavior:reduce?"auto":"smooth",block:"start"});}catch(e){}
@@ -776,6 +811,71 @@ function summaryText(){
   if(fl.length){T.push("","Provider types to consider:");fl.forEach(function(c){T.push("- "+CATS[c.key].n+": "+sortedProviders(c.key).slice(0,3).map(function(p){return p[0];}).join(", "));});}
   return T.join("\n");
 }
+/* ================= About and Help pages ================= */
+function scrollMain(){var reduce=window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches;try{mainEl.scrollIntoView({behavior:reduce?"auto":"smooth",block:"start"});}catch(e){}}
+function viewAbout(){
+  return '<section class="panel doc"><h2>About this app</h2><p class="lede">A diagnostic for the Indian pharmaceutical supply chain, built on the SCOR Digital Standard. It shows which process causes service, cost and compliance failures, and what to fix first.</p>'+
+  '<h3>The supply chain it covers</h3><p>Medicines move from API, excipient and packaging suppliers to a manufacturer or contract manufacturer, then to carrying-and-forwarding (C&amp;F) agents in each state, to distributors and stockists, and finally to pharmacies, hospitals and government buyers who serve patients. Logistics providers move goods between every stage, and regulators such as CDSCO, state drug controllers and the US FDA inspect each one.</p>'+
+  '<ul><li><b>Material</b> flows forward to the patient. Recalled, damaged and expired stock flows back for credit or destruction.</li><li><b>Information</b> flows back and across: orders, sales, forecasts, batch and QR code data, temperature records and regulatory filings.</li><li><b>Money</b> flows back from pharmacies through distributors to the manufacturer and its suppliers.</li></ul>'+
+  '<h3>Decisions it supports</h3><ul><li><b>Sourcing</b>: which suppliers, how many sources and which countries (Source).</li><li><b>Production</b>: what to make, where, and when to release a batch (Transform).</li><li><b>Inventory</b>: how much stock to hold, given shelf life (Plan).</li><li><b>Transportation and distribution</b>: modes, carriers, cold chain packaging and the depot network (Fulfill).</li><li><b>Governance</b>: audits, data, risk and partner agreements across all of them (Orchestrate).</li></ul>'+
+  '<h3>Strategy fit</h3><p>Most Indian generic makers compete on low cost and dependable supply, which calls for an <b>efficient</b> supply chain. Vaccines, biologics, launches and tenders need a <b>responsive</b> one. Use Process importance on the Context step to reflect your strategy: set Source and Transform high for efficiency, or Plan, Order and Fulfill high for responsiveness. The priority list follows these weights. A compliance red flag caps the rating under any strategy.</p>'+
+  '<p>Key trade-offs: more safety stock improves on-time delivery but raises expiry write-offs; a single supplier costs less but raises supply risk; better cold chain packaging costs more but prevents product loss; faster batch release must not weaken data integrity.</p>'+
+  '<h3>How it works</h3><p>You rate up to 66 practices on a 1 to 5 maturity scale, including 9 KPIs. The app converts KPIs to scores using set thresholds, counts compliance-critical practices double, and averages them into process and overall scores against a target of 3.5 to 3.8. Rules that read pairs of answers suggest root causes. A priority index ranks the gaps, your revenue converts four KPI gaps into value exposed, and each weak area is matched to provider categories, a vendor scorecard and the regulations of your markets.</p>'+
+  '<h3>Data and assumptions</h3><ul><li>The sample loaded on a first visit is <b>synthetic</b>: a fictional generics manufacturer created to show how the report works.</li><li>Thresholds, weights and rules are judgement-based defaults, not published benchmarks.</li><li>Scores rely on honest self-assessment. Value exposed is not money lost, and provider names are examples, not endorsements.</li><li>Your answers stay in this browser. Nothing is sent to a server.</li></ul>'+
+  '<div class="nav"><button class="btn primary" type="button" data-act="closepage">Back to the assessment</button><button class="btn" type="button" data-page="help">How to use it</button></div></section>';
+}
+function viewHelp(){
+  return '<section class="panel doc"><h2>How to use it</h2><p class="lede">Gather your nine KPI figures from company records first. Everything else is answered on screen.</p>'+
+  '<h3>Steps</h3><ol><li><b>Look at the sample.</b> On a first visit a synthetic example is loaded. Choose See the sample report on the Context step to view a full report.</li><li><b>Start your own.</b> On the Context step choose Clear and enter my own. Saved assessments are kept.</li><li><b>Set the context.</b> Enter a name, role, markets and cold chain exposure. Revenue and cold chain share are optional and size the value exposed. Open Process importance to weight the processes.</li><li><b>Answer each process.</b> Click a level from 1 (not in place) to 5 (optimised) for each statement, or type the KPI figure. Add an evidence note if useful, and tick Not applicable where a practice does not apply.</li><li><b>Move around</b> with Next and Back, or click any step in the list.</li><li><b>Read the results</b> in five tabs: Overview, Priorities and value, Providers, Compliance, and Save and compare.</li><li><b>Compare vendors</b> in the Vendor scorecard on the Providers tab.</li><li><b>Download or share.</b> Download PDF gives a summary report. Download CSV gives every answer, score and priority for a spreadsheet. Copy summary gives text for an email.</li><li><b>Save and compare</b> assessments over time or across sites, and use Show my data to move them to another device.</li></ol>'+
+  '<h3>Input formats</h3><ul><li><b>Ratings</b>: a whole number from 1 to 5, chosen by clicking.</li><li><b>Percentage KPIs</b>: a number from 0 to 100 without the % sign. Enter 91 for 91 percent, not 0.91.</li><li><b>Order-to-dispatch time</b>: days from 0 to 365, such as 3 or 2.5.</li><li><b>Annual revenue</b>: ₹ crore, 0 or more, such as 1200.</li><li><b>Cold chain share</b>: a percentage from 0 to 100.</li></ul><p>A value outside these ranges shows a red message under the field and is not scored until it is corrected.</p>'+
+  '<h3>Good to know</h3><ul><li>Answers are saved in this browser only. A private window or clearing browser data removes them, so download a CSV or use Show my data to keep a copy.</li><li>If a download does not start, open the app from its web link; some previews block downloads.</li></ul>'+
+  '<div class="nav"><button class="btn primary" type="button" data-act="closepage">Back to the assessment</button><button class="btn" type="button" data-page="about">About this app</button></div></section>';
+}
+
+/* ================= Downloads: CSV and PDF ================= */
+function saveFile(name,blob){
+  try{var url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=name;document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(url);a.remove();},1500);return true;}catch(e){return false;}
+}
+function fileBase(){return ((ctx.name||"assessment").replace(/[^A-Za-z0-9]+/g,"-").replace(/^-+|-+$/g,"").toLowerCase()||"assessment")+"-"+new Date().toISOString().slice(0,10);}
+function csvCell(v){var s=String(v===null||v===undefined?"":v);return /[",\r\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}
+function buildCSV(){
+  var t=target(),o=overall(),R=[],W=["","Low","Normal","High"],B={good:"On target",warn:"Developing",bad:"Gap"};
+  function row(a){R.push(a.map(csvCell).join(","));}
+  row(["Pharma Supply Chain Diagnostic"]);row(["Company",ctx.name||""]);row(["Role",ORG[ctx.org]]);row(["Markets",mkList()]);row(["Temperature-sensitive products",COLD[ctx.cold]]);row(["Generated",new Date().toISOString().slice(0,10)]);
+  if(isSample)row(["Note","Sample answers for an example company, not real figures"]);
+  row([]);row(["Overall score",fmt(o)]);row(["Target",t.toFixed(1)]);row(["Rating",o===null?"":rating(o,t)]);row(["Compliance red flags",redFlags().length]);
+  row([]);row(["Process","Score","Importance","Status"]);
+  PROCS.forEach(function(p,i){var v=pScore(i);row([p.n,fmt(v),W[ctx.w[i]],v===null?"":B[band(v,t)]]);});
+  var pr={};priorities().forEach(function(x,i){pr[x.q.id]=i+1;});
+  row([]);row(["Code","Practice","Process","Attribute","Type","Compliance-critical","Answer","Score","Priority rank","Evidence note"]);
+  Q.filter(active).forEach(function(q){var sc=qScore(q);row([q.id,q.l,PROCS[q.i].n,ATTR[q.a],q.k==="m"?"KPI ("+q.u+")":"Rating 1-5",q.crit?"Yes":"No",isNA(q)?"Not applicable":(answers[q.id]===undefined?"":answers[q.id]),sc===null?"":sc,pr[q.id]||"",notes[q.id]||""]);});
+  var st=stake();if(st&&st.length){row([]);row(["Gap","Yours","Benchmark","Value exposed (Rs crore a year)"]);st.forEach(function(r){row([r[0],r[1],r[2],r[3].toFixed(1)]);});}
+  var fs=findings();if(fs.length){row([]);row(["Likely root cause","Explanation"]);fs.forEach(function(f){row([f[0],f[1]]);});}
+  return R.join("\r\n");
+}
+function buildPDF(){
+  var J=window.jspdf&&window.jspdf.jsPDF;if(!J)return null;
+  var doc=new J({unit:"mm",format:"a4"}),y=18,M=15,W=180;
+  function txt(s,size,bold,after){doc.setFont("helvetica",bold?"bold":"normal");doc.setFontSize(size);doc.splitTextToSize(String(s),W).forEach(function(p){if(y>280){doc.addPage();y=18;}doc.text(p,M,y);y+=size*0.42;});y+=(after===undefined?1.5:after);}
+  function head(s){y+=3;if(y>270){doc.addPage();y=18;}txt(s,12,true,0.5);doc.setLineWidth(0.2);doc.line(M,y-1,M+W,y-1);y+=3;}
+  var t=target(),o=overall(),rf=redFlags();
+  txt((ctx.name?ctx.name+": ":"")+"Supply chain health check",16,true,2);
+  txt("Pharma Supply Chain Diagnostic (SCOR-DS). Generated "+new Date().toISOString().slice(0,10)+".",9,false,0.5);
+  txt("Setup: "+ORG[ctx.org]+"; "+mkList()+"; "+COLD[ctx.cold]+".",9,false,3);
+  txt("Overall score "+fmt(o)+" out of 5. Target "+t.toFixed(1)+". Rating: "+(o===null?"not scored":rating(o,t))+". "+doneCount()+" of "+activeCount()+" questions answered.",11,true,2);
+  if(isSample)txt("These are sample answers for an example company, not real figures.",9,false,1);
+  head("Process scores");PROCS.forEach(function(p,i){var v=pScore(i);txt(p.n+": "+fmt(v)+(v===null?"":v>=t?" (on target)":" (below target)"),10,false,0.5);});
+  head("Compliance red flags");if(rf.length)rf.forEach(function(q){txt("- "+q.l+" ("+PROCS[q.i].n+", "+qScore(q)+" of 5): "+q.t,10,false,0.8);});else txt("None.",10);
+  var fs=findings();head("Likely root causes");if(fs.length)fs.forEach(function(f){txt(f[0],10,true,0.3);txt(f[1],9.5,false,1.5);});else txt("No combined risk patterns found.",10);
+  var pr=priorities();head("Top priorities");if(pr.length)pr.forEach(function(x,i){txt((i+1)+". "+x.q.l+" ("+PROCS[x.q.i].n+", "+x.s+" of 5). Who can help: "+(x.q.c.length?CATS[x.q.c[0]].n:"internal action")+".",10,false,0.8);});else txt("Every scored practice meets the target.",10);
+  var st=stake();if(st&&st.length){head("Value exposed (Rs crore a year)");st.forEach(function(r){txt(r[0]+": "+r[1]+" against "+r[2]+" = Rs "+r[3].toFixed(1)+" crore",10,false,0.8);});txt("These are values exposed, not losses. The rows overlap and should not be added.",9,false,1);}
+  var rm=roadmap();if(rm.length){head("Action roadmap");rm.slice(0,5).forEach(function(r){txt(PROCS[r.i].n+" ("+r.v.toFixed(1)+")",10,true,0.3);txt("0 to 3 months: "+REC[r.i].q,9.5,false,0.3);txt("3 to 12 months: "+REC[r.i].m,9.5,false,0.3);txt("12 months and beyond: "+REC[r.i].s,9.5,false,1.5);});}
+  var fl=catResults().filter(function(c){return c.flag;});if(fl.length){head("Provider categories to consider");fl.forEach(function(c){txt(CATS[c.key].n+" (related practices "+c.avg.toFixed(1)+"): "+sortedProviders(c.key).slice(0,3).map(function(p){return p[0];}).join(", "),10,false,0.8);});txt("Example providers, not endorsements. Confirm current services, licences and references before shortlisting.",9,false,1);}
+  head("Compliance readiness");regRows().forEach(function(x){txt(x.r.n+": "+x.st,10,false,0.6);});
+  y+=3;txt("Scores are based on self-assessment and default thresholds. Review them against your SCOR-DS reference and internal standards before relying on them.",8.5,false,0);
+  var n=doc.getNumberOfPages();for(var i=1;i<=n;i++){doc.setPage(i);doc.setFont("helvetica","normal");doc.setFontSize(8);doc.text("Page "+i+" of "+n,M+W,290,{align:"right"});}
+  return doc;
+}
 function exportData(){return JSON.stringify({v:2,ctx:ctx,answers:answers,notes:notes,evals:evals,snaps:snaps});}
 
 /* ================= Events ================= */
@@ -784,6 +884,7 @@ function msg(id,text){var el=document.getElementById(id);if(el)el.textContent=te
 document.addEventListener("click",function(e){
   var st=e.target.closest("[data-step]");if(st){go(Number(st.getAttribute("data-step")));return;}
   var tb=e.target.closest("[data-tab]");if(tb){tab=tb.getAttribute("data-tab");render();return;}
+  var pg=e.target.closest("[data-page]");if(pg){page=pg.getAttribute("data-page");render();scrollMain();return;}
   var b=e.target.closest("[data-act]");if(!b)return;
   var a=b.getAttribute("data-act");
   if(a==="next")go(step+1);
@@ -811,6 +912,16 @@ document.addEventListener("click",function(e){
     try{d=JSON.parse(bx.value);}catch(err){}
     if(!d||typeof d!=="object"||!d.ctx||!d.answers){msg("ioMsg","That text is not valid assessment data. Paste the full exported text and try again.");return;}
     adopt(d);isSample=false;render();msg("ioMsg","Data loaded.");
+  }
+  else if(a==="closepage"){page=null;render();scrollMain();}
+  else if(a==="csv"){
+    var okc=saveFile(fileBase()+".csv",new Blob(["﻿"+buildCSV()],{type:"text/csv;charset=utf-8"}));
+    msg("toast",okc?"CSV download started. If no file appears, open the app from its web link: some previews block downloads.":"This view blocks downloads. Open the app from its web link to download.");
+  }
+  else if(a==="pdf"){
+    var d=null;try{d=buildPDF();}catch(err){d=null;}
+    if(d){try{d.save(fileBase()+".pdf");msg("toast","PDF download started. If no file appears, open the app from its web link: some previews block downloads.");}catch(err){msg("toast","This view blocks downloads. Open the app from its web link to download.");}}
+    else msg("toast","The PDF tool did not load. Use your browser's Print command and choose Save as PDF.");
   }
   else if(a==="copy"){
     var tx=summaryText();
@@ -842,12 +953,21 @@ mainEl.addEventListener("input",function(e){
   if(t.hasAttribute("data-metric")){
     touch();var id=t.getAttribute("data-metric"),q=null;answers[id]=t.value;
     Q.forEach(function(x){if(x.id===id)q=x;});
-    var s=metricScore(q,t.value),chip=document.getElementById("chip-"+id);
-    if(chip)chip.textContent=s===null?"Enter a value":"Scores "+s+" of 5";
+    var s=metricScore(q,t.value),er=metricError(q,t.value);
+    if(!er&&t.validity&&t.validity.badInput)er="Enter a number, for example "+(q.u==="%"?"91":"3")+".";
+    var chip=document.getElementById("chip-"+id),em=document.getElementById("err-"+id);
+    if(chip)chip.textContent=chipText(s,er);
+    if(em)em.textContent=er;
+    if(er)t.setAttribute("aria-invalid","true");else t.removeAttribute("aria-invalid");
     afterAnswer();
   }
   else if(t.hasAttribute("data-note")){notes[t.getAttribute("data-note")]=t.value;save();}
-  else if(t.tagName==="INPUT"&&t.hasAttribute("data-ctx")){ctx[t.getAttribute("data-ctx")]=t.value;save();}
+  else if(t.tagName==="INPUT"&&t.hasAttribute("data-ctx")){
+    var k=t.getAttribute("data-ctx");ctx[k]=t.value;
+    var em2=document.getElementById("err-"+k);
+    if(em2){var er2=ctxErr(k);if(!er2&&t.validity&&t.validity.badInput)er2="Enter a number.";em2.textContent=er2;if(er2)t.setAttribute("aria-invalid","true");else t.removeAttribute("aria-invalid");}
+    save();
+  }
 });
 function afterAnswer(){
   var i=step-1;
